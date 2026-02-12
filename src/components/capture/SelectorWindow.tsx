@@ -11,8 +11,8 @@ import type {
 
 // --- Constants ---
 
-const HANDLE_SIZE = 8;
-const HANDLE_HIT_AREA = 12;
+const HANDLE_SIZE = 12;
+const HANDLE_HIT_AREA = 16;
 const MIN_SELECTION = 5;
 
 const CURSOR_MAP: Record<HandlePosition, string> = {
@@ -167,9 +167,13 @@ export function SelectorWindow() {
     setStateType(newState.type);
   }, []);
 
+  // Ref to store resetAll function for use in event listeners
+  const resetAllRef = useRef<(() => void) | null>(null);
+
   // Listen for screenshot-ready event from main window (receives base64 directly)
   useEffect(() => {
     const unlisten = listen<{ base64: string }>("screenshot-ready", (event) => {
+      console.log("[Selector] screenshot-ready event received");
       const { base64 } = event.payload;
       if (imgRef.current) {
         imgRef.current.src = `data:image/png;base64,${base64}`;
@@ -182,42 +186,21 @@ export function SelectorWindow() {
     };
   }, []);
 
-  const resetAll = useCallback(() => {
-    setState({ type: "ready" });
-    regionRef.current = null;
-    setImgLoaded(false);
-    if (imgRef.current) {
-      imgRef.current.src = "";
-    }
-  }, [setState]);
+  // Listen for reset-selection event to clear previous state when window is reused
+  useEffect(() => {
+    const unlisten = listen("reset-selection", () => {
+      console.log("[Selector] reset-selection event received");
+      resetAllRef.current?.();
+    });
 
-  const confirmSelection = useCallback(async () => {
-    const region = regionRef.current;
-    if (!region || region.width < MIN_SELECTION || region.height < MIN_SELECTION)
-      return;
-
-    // Convert CSS pixels to physical pixels for Rust cropping
-    const dpr = window.devicePixelRatio;
-    const finalRegion = {
-      x: Math.round(region.x * dpr),
-      y: Math.round(region.y * dpr),
-      width: Math.round(region.width * dpr),
-      height: Math.round(region.height * dpr),
+    return () => {
+      unlisten.then((fn) => fn());
     };
-
-    await emitTo("main", "region-selected", finalRegion);
-    await getCurrentWindow().hide();
-    resetAll();
-  }, [resetAll]);
-
-  const cancelSelection = useCallback(async () => {
-    await emitTo("main", "selection-cancelled");
-    await getCurrentWindow().hide();
-    resetAll();
-  }, [resetAll]);
+  }, []);
 
   // --- Direct DOM manipulation for 60fps updates ---
   const updateSelectionDOM = useCallback((region: Region | null) => {
+    console.log("[Selector] updateSelectionDOM called, region:", region, "stateRef:", stateRef.current);
     if (!region || region.width <= 0 || region.height <= 0) {
       if (selectionRef.current) selectionRef.current.style.display = "none";
       if (sizeInfoRef.current) sizeInfoRef.current.style.display = "none";
@@ -269,9 +252,52 @@ export function SelectorWindow() {
     }
   }, []);
 
+  const resetAll = useCallback(() => {
+    console.log("[Selector] resetAll called, current state:", stateRef.current);
+    // 同步更新 stateRef，确保 updateSelectionDOM 能获取到正确的状态
+    stateRef.current = { type: "ready" };
+    setStateType("ready");
+    regionRef.current = null;
+    setImgLoaded(false);
+    if (imgRef.current) {
+      imgRef.current.src = "";
+    }
+    // 清除 DOM 中的选区框
+    updateSelectionDOM(null);
+  }, [updateSelectionDOM]);
+
+  // Keep the ref in sync with the callback
+  resetAllRef.current = resetAll;
+
+  const confirmSelection = useCallback(async () => {
+    const region = regionRef.current;
+    if (!region || region.width < MIN_SELECTION || region.height < MIN_SELECTION)
+      return;
+
+    // Convert CSS pixels to physical pixels for Rust cropping
+    const dpr = window.devicePixelRatio;
+    const finalRegion = {
+      x: Math.round(region.x * dpr),
+      y: Math.round(region.y * dpr),
+      width: Math.round(region.width * dpr),
+      height: Math.round(region.height * dpr),
+    };
+
+    await emitTo("main", "region-selected", finalRegion);
+    await getCurrentWindow().hide();
+    resetAll();
+  }, [resetAll]);
+
+  const cancelSelection = useCallback(async () => {
+    await emitTo("main", "selection-cancelled");
+    await getCurrentWindow().hide();
+    resetAll();
+  }, [resetAll]);
+
   // --- Mouse handlers ---
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
+      console.log("[Selector] handleMouseDown called, button:", e.button, "state:", stateRef.current);
       if (e.button !== 0) return;
       const x = e.clientX;
       const y = e.clientY;
@@ -288,7 +314,7 @@ export function SelectorWindow() {
 
         const zone = getHitZone(x, y, region);
         if (zone === "outside") {
-          // Start new drawing
+          // 点击外部时，清除当前选区，开始画新框
           regionRef.current = null;
           updateSelectionDOM(null);
           setState({ type: "drawing", startX: x, startY: y });

@@ -50,24 +50,31 @@ function App() {
         selectorWindow.setPosition(new LogicalPosition(0, 0)),
       ]);
 
-      // 2. 隐藏主窗口（必须在截图之前）
-      await getCurrentWindow().hide();
+      // 2. 隐藏主窗口和 selector 窗口（必须在截图之前）
+      await Promise.all([
+        getCurrentWindow().hide(),
+        selectorWindow.hide(),
+      ]);
 
-      // 2.5 隐藏 selector 窗口（确保截图时不捕获到）
-      await selectorWindow.hide();
+      // 3. 短暂等待窗口隐藏（减少延迟）
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
-      // 3. 等待窗口完全隐藏
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      // 4. 重置 selector 窗口的选区状态（防止残留）
+      await emitTo("selector", "reset-selection");
 
-      // 4. 截图
-      await commands.captureAndCache();
-
-      // 5. 获取缓存图片用于传递（避免 selector 二次 IPC）
-      const base64 = await commands.getCachedScreenshot();
-
-      // 6. 显示 selector 并发送图片数据
+      // 5. 立即显示 selector 窗口（让用户先看到选区 UI）
       await selectorWindow.show();
       await selectorWindow.setFocus();
+
+      // 5. 并行执行截图和获取图片
+      const [base64] = await Promise.all([
+        (async () => {
+          await commands.captureAndCache();
+          return commands.getCachedScreenshot();
+        })(),
+      ]);
+
+      // 6. 发送图片数据给 selector
       await emitTo("selector", "screenshot-ready", { base64 });
     } catch (err) {
       console.error("Failed to start capture:", err);
@@ -208,7 +215,7 @@ function App() {
           setBeautifyOptions(snapshot.beautifyOptions);
           setAnnotations(snapshot.annotations);
         }
-      } else if (isMeta && e.key === "n") {
+      } else if (isMeta && e.shiftKey && e.key === "p") {
         e.preventDefault();
         handleStartCapture();
       }
@@ -244,7 +251,7 @@ function App() {
             onClick={handleStartCapture}
             className="px-3 py-1 bg-blue-500 text-white text-xs rounded-md hover:bg-blue-600 transition-colors"
           >
-            New Capture (⌘N)
+            New Capture (⌘⇧P)
           </button>
         </div>
       </div>
