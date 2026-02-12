@@ -160,6 +160,7 @@ export function SelectorWindow() {
   const selectionRef = useRef<HTMLDivElement>(null);
   const sizeInfoRef = useRef<HTMLDivElement>(null);
   const handlesContainerRef = useRef<HTMLDivElement>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
 
   // Helper to update state ref + trigger re-render via stateType
   const setState = useCallback((newState: SelectionState) => {
@@ -206,6 +207,7 @@ export function SelectorWindow() {
       if (sizeInfoRef.current) sizeInfoRef.current.style.display = "none";
       if (handlesContainerRef.current)
         handlesContainerRef.current.style.display = "none";
+      if (toolbarRef.current) toolbarRef.current.style.display = "none";
       if (overlayRef.current) overlayRef.current.style.display = "block";
       return;
     }
@@ -250,6 +252,19 @@ export function SelectorWindow() {
         }
       }
     }
+
+    // Show toolbar with confirm/cancel buttons when region exists and has valid dimensions
+    const toolbar = toolbarRef.current;
+    if (toolbar) {
+      // Show toolbar whenever a valid region exists, regardless of state type
+      const showToolbar = region !== null && region.width > 0 && region.height > 0;
+      toolbar.style.display = showToolbar ? "flex" : "none";
+      if (showToolbar) {
+        // Position at bottom-right corner of selection, offset by 8px
+        toolbar.style.left = `${region.x + region.width + 8}px`;
+        toolbar.style.top = `${region.y + region.height / 2 - 14}px`;
+      }
+    }
   }, []);
 
   const resetAll = useCallback(() => {
@@ -270,6 +285,7 @@ export function SelectorWindow() {
   resetAllRef.current = resetAll;
 
   const confirmSelection = useCallback(async () => {
+    console.log("[Selector] confirmSelection called, region:", regionRef.current);
     const region = regionRef.current;
     if (!region || region.width < MIN_SELECTION || region.height < MIN_SELECTION)
       return;
@@ -289,6 +305,7 @@ export function SelectorWindow() {
   }, [resetAll]);
 
   const cancelSelection = useCallback(async () => {
+    console.log("[Selector] cancelSelection called");
     await emitTo("main", "selection-cancelled");
     await getCurrentWindow().hide();
     resetAll();
@@ -543,6 +560,61 @@ export function SelectorWindow() {
         ))}
       </div>
 
+      {/* Confirm/Cancel toolbar buttons */}
+      <div
+        ref={toolbarRef}
+        className="absolute flex gap-1"
+        style={{ display: "none", zIndex: 13 }}
+      >
+        {/* Confirm button (checkmark) */}
+        <button
+          className="w-7 h-7 rounded flex items-center justify-center transition-transform hover:scale-110"
+          style={{ backgroundColor: "#22c55e" }}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            confirmSelection();
+          }}
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="white"
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+        </button>
+        {/* Cancel button (X) */}
+        <button
+          className="w-7 h-7 rounded flex items-center justify-center transition-transform hover:scale-110"
+          style={{ backgroundColor: "#ef4444" }}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            cancelSelection();
+          }}
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="white"
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+
       {/* Ready state instructions */}
       {stateType === "ready" && imgLoaded && (
         <div
@@ -562,8 +634,7 @@ export function SelectorWindow() {
           style={{ left: 0, right: 0, bottom: 24, textAlign: "center", zIndex: 20 }}
         >
           <span className="bg-black/70 text-white px-4 py-2 rounded-lg text-xs inline-block">
-            Drag handles to resize &middot; Drag inside to move &middot;
-            Enter or double-click to confirm &middot; ESC to cancel
+            Drag to move &middot; Drag handles to resize &middot; Click buttons or press ESC/Enter
           </span>
         </div>
       )}
