@@ -18,6 +18,8 @@
     "core:window:allow-create",
     "opener:default",
     "global-shortcut:default",
+    "global-shortcut:allow-register",
+    "global-shortcut:allow-unregister",
     "clipboard-manager:default",
     "dialog:default",
     "fs:default"

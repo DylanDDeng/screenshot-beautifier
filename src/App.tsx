@@ -1,4 +1,5 @@
 import { useEffect, useCallback, useRef } from "react";
+import { register, unregister } from "@tauri-apps/plugin-global-shortcut";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { listen, emitTo } from "@tauri-apps/api/event";
@@ -229,6 +230,32 @@ function App() {
     originalImage,
     handleStartCapture,
   ]);
+
+  // Register global shortcut for screenshot capture
+  useEffect(() => {
+    console.log("[App] Setting up global shortcut...");
+
+    const setupGlobalShortcut = async () => {
+      try {
+        console.log("[App] Registering global shortcut...");
+        await register("CommandOrControl+Shift+P", () => {
+          console.log("[App] Global shortcut triggered: CommandOrControl+Shift+P");
+          handleStartCapture();
+        });
+        console.log("[App] Global shortcut registered successfully!");
+      } catch (err) {
+        console.error("[App] Failed to register global shortcut:", err);
+      }
+    };
+
+    setupGlobalShortcut();
+
+    return () => {
+      unregister("CommandOrControl+Shift+P").catch((err) => {
+        console.error("[App] Failed to unregister global shortcut:", err);
+      });
+    };
+  }, [handleStartCapture]);
 
   // Set window title
   useEffect(() => {
